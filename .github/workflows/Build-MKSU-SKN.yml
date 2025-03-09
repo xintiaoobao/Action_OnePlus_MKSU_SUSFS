@@ -87,10 +87,8 @@ jobs:
           mkdir kernel_workspace && cd kernel_workspace
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
           repo sync
-          # 删除特定的保护导出文件，若不存在则提示
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          # 去除版本号中的'-dirty'标识
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
           sed -i 's/ -dirty//g' kernel_platform/msm-kernel/scripts/setlocalversion
       - name: KernelSU & MKSU-SKN version
@@ -117,7 +115,7 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           git clone https://github.com/TheWildJames/kernel_patches.git
           cd kernel_platform
-          # 复制SUSFS补丁文件
+          # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
@@ -143,9 +141,9 @@ jobs:
       - name: Add SUSFS Configuration Settings
         run: |
           cd kernel_workspace/kernel_platform
-          # 添加KSU配置设置
+          # Add KSU configuration settings
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # 根据VFS补丁启用情况添加VFS配置设置
+          # Add VFS configuration settings
           if [[ "${{ github.event.inputs.VFS_patch_ENABLED }}" == 'enable' ]]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -153,7 +151,7 @@ jobs:
           else
             echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          # 添加SUSFS配置设置
+          # Add SUSFS configuration settings
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -169,7 +167,22 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # 移除check_defconfig
+          # 添加新的配置项
+          echo "ro.build.tags=release-keys" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.boot.warranty_bit=0" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.vendor.boot.warranty_bit=0" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.vendor.warranty_bit=0" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.warranty_bit=0" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.boot.flash.locked=1" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.boot.verifiedbootstate=green" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.boot.veritymode=enforcing" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.boot.vbmeta.device_state=locked" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "vendor.boot.vbmeta.device_state=locked" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.build.type=user" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.debuggable=0" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.secure=1" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "ro.secureboot.lockstate=1" >> ./common/arch/arm64/configs/gki_defconfig
+          # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
       - name: Add make name
         run: |
@@ -177,12 +190,12 @@ jobs:
           sed -i '$s|echo "\$res"|echo "\${{ github.event.inputs.KERNEL_NAME }}"|' ./common/scripts/setlocalversion
           sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
       - name: Build kernel
-        if: github.event.inputs.CPU == 'sm8650' 
+        if: github.event.inputs.CPU == 'sm8650'
         run: |
           cd kernel_workspace
           ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.CPUD }} gki
       - name: Fallback build kernel
-        if: github.event.inputs.CPU != 'sm8650' 
+        if: github.event.inputs.CPU != 'sm8650'
         run: |
           cd kernel_workspace
           LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki
@@ -192,20 +205,13 @@ jobs:
           rm -rf ./AnyKernel3/.git
           cp kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
           cp kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/Image ./kernel_workspace/kernel
-      - name: Add custom build.prop settings
-        run: |
-          # 生成包含系统属性修改的文件
-          echo "ro.build.tags=release-keys ro.boot.warranty_bit=0 ro.vendor.boot.warranty_bit=0 ro.vendor.warranty_bit=0 ro.warranty_bit=0 ro.boot.flash.locked=1 ro.boot.verifiedbootstate=green ro.boot.veritymode=enforcing ro.boot.vbmeta.device_state=locked vendor.boot.vbmeta.device_state=locked ro.build.type=user ro.debuggable=0 ro.secure=1 ro.secureboot.lockstate=1" >./AnyKernel3/custom.prop
-          # 将修改添加到build.prop文件中
-          echo -e "\n# Add custom properties\nif [ -f \$system/build.prop ]; then\n    cat $HOME/custom.prop >> \$system/build.prop\nfi\nif [ -f \$system/vendor/build.prop ]; then\n    cat $HOME/custom.prop >> \$system/vendor/build.prop\nfi" >>./AnyKernel3/anykernel.sh
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
           name: AnyKernel3_KernelSU_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
           path: ./AnyKernel3/*
       - name: Upload Image
-        uses: actions/uupload-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: Image_KernelSU_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
           path: kernel_workspace/kernel
-
